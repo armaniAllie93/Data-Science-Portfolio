@@ -1,0 +1,57 @@
+import pandas as pd
+import matplotlib.pyplot as mp
+import ta
+import datetime
+import math
+from pandas.plotting import autocorrelation_plot
+import numpy as np
+
+#initiates Kucoin account
+from kucoin.client import Client
+client = Client(#accountnumber,#secretkey,#passphrase)
+
+buy_order = client.SIDE_BUY
+sell_order = client.SIDE_SELL
+stop_loss = client.STOP_LOSS
+#retrieves account information and buying power in trading account
+accounts = client.get_accounts()
+account = pd.DataFrame(accounts)
+buypower = account.iloc[0,0]
+
+#converts buying power to float and divides by 2 to represent buy size
+buypow = float(buypower)
+buypow = buypow//2
+#converts buy size back to str for create_market_order
+buysize = str(buypow)
+##print(account)
+
+#sets beginning and ending timestamp
+now = datetime.datetime.now()
+nowtime = now.timestamp()
+start = now - datetime.timedelta(days=2)
+starttime = start.timestamp()
+endTime = math.floor(nowtime)
+beginTime = math.floor(starttime)
+
+kline = client.get_kline_data('XRP-USDT','1hour',beginTime,endTime)
+data = pd.DataFrame(kline)
+closeprice = data[[0,2]]
+#convert timestamp to date time format and closing price to float unit for rsi function to work
+closeprice[0] = pd.to_datetime(closeprice[0],unit='s',origin='unix')
+closeprice[2] = closeprice[2].astype(float)
+#reverse index for chronological time series
+closeprice = closeprice.reindex(index=closeprice.index[::-1])
+close = closeprice[2]
+#EMA
+ema = ta.trend.ema_indicator(close,n=35, fillna=True)
+lastEMA = ema.tail(1)
+#initialize rsi indicator and selects out last row
+rsi = ta.momentum.rsi(close=closeprice[2], n=3)
+#get trend percentage difference
+trend = (ema - close) / close
+lastTrend = trend.tail(1)
+firstTrend = trend.tail(2)
+#print(lastTrend)
+ema.plot()
+close.plot()
+#mp.show()
