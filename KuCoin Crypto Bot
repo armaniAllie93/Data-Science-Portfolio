@@ -1,30 +1,31 @@
 import pandas as pd
-import matplotlib.pyplot as mp
 import ta
 import datetime
 import math
-from pandas.plotting import autocorrelation_plot
-import numpy as np
 
 #initiates Kucoin account
 from kucoin.client import Client
-client = Client(#accountnumber,#secretkey,#passphrase)
+client = Client(#apikey, #secretkey, #passphrase)
 
+#exception module
+from kucoin.exceptions import KucoinAPIException
 buy_order = client.SIDE_BUY
 sell_order = client.SIDE_SELL
 stop_loss = client.STOP_LOSS
 #retrieves account information and buying power in trading account
 accounts = client.get_accounts()
 account = pd.DataFrame(accounts)
-buypower = account.iloc[0,0]
-
+trade = account['type']=='trade'
+account = account[trade]
+#Trade USDT account
+buypower = account.loc[account['currency']=='USDT', 'available'].values[0]
+print(account)
+print(buypower)
 #converts buying power to float and divides by 2 to represent buy size
 buypow = float(buypower)
 buypow = buypow//2
 #converts buy size back to str for create_market_order
 buysize = str(buypow)
-##print(account)
-
 #sets beginning and ending timestamp
 now = datetime.datetime.now()
 nowtime = now.timestamp()
@@ -33,25 +34,85 @@ starttime = start.timestamp()
 endTime = math.floor(nowtime)
 beginTime = math.floor(starttime)
 
-kline = client.get_kline_data('XRP-USDT','1hour',beginTime,endTime)
-data = pd.DataFrame(kline)
-closeprice = data[[0,2]]
-#convert timestamp to date time format and closing price to float unit for rsi function to work
-closeprice[0] = pd.to_datetime(closeprice[0],unit='s',origin='unix')
-closeprice[2] = closeprice[2].astype(float)
-#reverse index for chronological time series
-closeprice = closeprice.reindex(index=closeprice.index[::-1])
-close = closeprice[2]
-#EMA
-ema = ta.trend.ema_indicator(close,n=35, fillna=True)
-lastEMA = ema.tail(1)
-#initialize rsi indicator and selects out last row
-rsi = ta.momentum.rsi(close=closeprice[2], n=3)
-#get trend percentage difference
-trend = (ema - close) / close
-lastTrend = trend.tail(1)
-firstTrend = trend.tail(2)
-#print(lastTrend)
-ema.plot()
-close.plot()
-#mp.show()
+#get technical indicators
+#brings in historic data and extracts closing price
+c = cryptolist = ['XRP-USDT', 'XLM-USDT', 'GGC-USDT','AKRO-USDT','WOM-USDT','SYLO-USDT','OGO-USDT','BLOC-USDT','BEPRO-USDT','FORESTPLUS-USDT','CHR-USDT','AOA-USDT','NWC-USDT']
+for i in cryptolist:
+	try:
+		kline = client.get_kline_data(i,'1hour',beginTime,endTime)
+	except KucoinAPIException as e:
+		print(e.response)
+		print(e.message)
+	data = pd.DataFrame(kline)
+	closeprice = data[[0,2]]
+	#convert timestamp to date time format and closing price to float unit for rsi function to work
+	closeprice[0] = pd.to_datetime(closeprice[0],unit='s',origin='unix')
+	closeprice[2] = closeprice[2].astype(float)
+	#reverse index for chronological time series
+	closeprice = closeprice.reindex(index=closeprice.index[::-1])
+	close = closeprice[2]
+	#print(closeprice)
+	#EMA
+	ema = ta.trend.ema_indicator(close,n=35,fillna=True)
+	lastEMA = ema.tail(1)
+	#print(ema)
+	#initialize rsi indicator and selects out last row
+	rsi = ta.momentum.rsi(close=closeprice[2], n=3)
+	lastRSI = rsi.tail(1)
+	#print(lastRSI)
+	#get percentage difference from EMA & close price
+	trend = (ema - close) / close
+	lastTrend = trend.tail(1)
+	firstTrend = trend.tail(2)
+	#print(lastTrend)
+	orders = client.get_orders(i,status='active')
+	#converts crypto list item to string 
+	cstr = ''.join(str(x) for x in i)
+	print(cstr)
+	#goes through account currency to create sellsize for given coin, sees if crypto list matches with 
+	for s in account['currency']:
+		if cstr.startswith(s):
+			sellsize = account.loc[account['currency'] == s, 'available'].values[0]
+			print("sell size " + sellsize)
+	#creates loop for last trend percentage
+	for k in lastTrend:
+	#nested loop previous trend percentage
+		for f in firstTrend:
+			#sells from trend climb
+			if f < -0.03 and k > -0.03:
+				try:
+					market_sell = client.create_market_order(i,sell_order, funds=sellsize)
+					print(str(i) + " sell order made")
+				except KucoinAPIException as e:
+					print(e.message)
+					print(e.response)
+			else:
+				print(str(i)+" No market orders")
+			#buys from trend downfall
+			if f > 0.03 and k < 0.03:
+			   try:
+			       market_buy = client.create_market_order(i,buy_order, funds=buysize)
+			       print(str(i) + " buy order made")
+			   except KucoinAPIException as e:
+			       print(e.message)
+			       print(e.response)
+			#initiates rsi in middle ground of trend percentage
+			if f > -0.03 and k < 0.03:
+				for j in lastRSI:
+					if j < 23:
+					   try:
+						   market_buy = client.create_market_order(i,buy_order, funds=buysize)
+						   print(str(i) + " buy order made")
+					   except KucoinAPIException as e:
+					       print(e.message)
+					       print(e.response)
+					if j > 80:
+					   try:
+						   market_sell = client.create_market_order(i,sell_order, funds=sellsize)
+						   #get buy order id to get fund size for sell
+						   print(str(i) + " buy order made")
+					   except KucoinAPIException as e:
+					       print(e.message)
+					       print(e.response)
+					else:
+						print(str(i)+ " No market orders")
