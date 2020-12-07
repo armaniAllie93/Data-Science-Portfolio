@@ -15,8 +15,9 @@ from dash.dependencies import Input, Output
 from kucoin.client import Client
 client = Client("CLIENTKEY", "SECRETKEY", "PASSPHRASE")
 
-MY_ADDRESS = 'armani.allie93@gmail.com'
-PASSWORD = 'mtbymugstkdmougj'
+#GMail Credentials
+MY_ADDRESS = ''
+PASSWORD = ''
 s = smtplib.SMTP(host='smtp.gmail.com', port=587)
 s.starttls()
 s.login(MY_ADDRESS, PASSWORD)
